@@ -50,9 +50,7 @@ class MobileNet(object):
 		return inputs
 
 	def forward(self,inputs):
-		print(inputs.shape)
-		exit()
-		out = self.conv2d(out,out_channel=32,kernel_size=3,stride=2)
+		out = self.conv2d(inputs,out_channel=32,kernel_size=3,stride=2)
 		out = self.separable_conv2d(out,out_channel=64,kernel_size=[3,3,32,1],stride=1)
 		out = self.separable_conv2d(out,out_channel=128,kernel_size=[3,3,64,1],stride=2)
 		out = self.separable_conv2d(out,out_channel=128,kernel_size=[3,3,128,1],stride=1)
@@ -87,8 +85,8 @@ class MobileNet(object):
 if __name__=='__main__':
 	with tf.device('/GPU:0'):
 		net = MobileNet()
-		data = np.random.randn(64,32,32,3)
-		inputs = tf.placeholder(tf.float32,[64,32,32,3])
+		data = np.random.randn(64,224,224,3)
+		inputs = tf.placeholder(tf.float32,[64,224,224,3])
 		predicts,softmax_out = net.forward(inputs)
 		config = tf.ConfigProto(allow_soft_placement=True)
 		config.gpu_options.allow_growth=True

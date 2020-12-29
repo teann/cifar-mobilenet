@@ -100,19 +100,19 @@ class Solver(object):
 		try:
 			while True:
 				images,labels = sess.run(train_dataset)
-				print(images.shape)
-				exit()
-				sess.run(self.train_op,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.5})
+
+				sess.run(self.train_op,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.8})
 				lr = sess.run(self.learning_rate)
 				if step % self.display_step==0:
-					acc = sess.run(self.accuracy,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.5})
+					print('imageshape here', images.shape)
+					acc = sess.run(self.accuracy,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.8})
 					total_accuracy+=acc 
 					acc_count+=1
-					loss = sess.run(self.total_loss,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.5})
+					loss = sess.run(self.total_loss,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.8})
 					print('Iter step:%d learning rate:%.4f loss:%.4f accuracy:%.4f' %(step,lr,loss,total_accuracy/acc_count))
 					sys.stdout.flush()
 				if step % self.predict_step == 0:
-					summary_str = sess.run(summary_op,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.5})
+					summary_str = sess.run(summary_op,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.8})
 					summary_writer.add_summary(summary_str,step)
 					test_images,test_labels = sess.run(test_dataset)
 					acc = sess.run(self.accuracy,feed_dict={self.images:test_images,self.labels:test_labels,self.is_training:False,self.keep_prob:1.0})
