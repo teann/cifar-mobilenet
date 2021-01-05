@@ -7,8 +7,8 @@ import tensorflow as tf
 import config.cfg as cfg 
 
 
-_HEIGHT = 224
-_WIDTH = 224
+_HEIGHT = 32
+_WIDTH = 32
 _NUM_CHANNELS = 3
 _DEFAULT_IMAGE_BYTES = _HEIGHT * _WIDTH * _NUM_CHANNELS
 # The record is the image plus a one-byte label
@@ -56,7 +56,6 @@ def preprocess_image(image, is_training):
 		image = tf.random_crop(image,[_HEIGHT,_WIDTH,_NUM_CHANNELS])
 		image = tf.image.random_flip_left_right(image)
 	image = tf.image.per_image_standardization(image)
-	image = tf.image.resize(image, [224, 224])
 	return image
 
 def input_fn(is_training, common_params,dataset_params):

@@ -7,7 +7,7 @@ dataset_params = {
 
 common_params = {
 	'batch_size':64,
-	'image_size':(224,224),
+	'image_size':(32,32),
 	'learning_rate':0.1,
 	'moment':0.9,
 	'display_step':100,
@@ -30,7 +30,7 @@ net_style = ['vgg11','vgg13','vgg16','vgg19',
 			'DensetNet40_12','DenseNet100_12','DenseNet100_24','DenseNetBC100_12','DenseNetBC250_24','DenseNetBC190_40',
 			'ResNext50','ResNext101',
 			'SqueezeNetA','SqueezeNetB',
-			'SE_Resnet_50','SE_Resnet_101']
+			'SE_Resnet_50','SE_Resnet_101', 'efficientnetb0']
 
 
 def merge_params(FLAGS):

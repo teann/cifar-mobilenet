@@ -13,6 +13,7 @@ class MobileNet(object):
 		self.is_training = is_training
 		self.conv_num = 0
 		self.weight_decay = 5e-4
+		print('WEIGHT DECAY HERE, ', self.weight_decay)
 		self.regularizer = tf.contrib.layers.l2_regularizer(scale=self.weight_decay)
 		self.initializer = tf.contrib.layers.xavier_initializer()
 		self.keep_prob = keep_prob
@@ -85,8 +86,8 @@ class MobileNet(object):
 if __name__=='__main__':
 	with tf.device('/GPU:0'):
 		net = MobileNet()
-		data = np.random.randn(64,224,224,3)
-		inputs = tf.placeholder(tf.float32,[64,224,224,3])
+		data = np.random.randn(64,32,32,3)
+		inputs = tf.placeholder(tf.float32,[64,32,32,3])
 		predicts,softmax_out = net.forward(inputs)
 		config = tf.ConfigProto(allow_soft_placement=True)
 		config.gpu_options.allow_growth=True

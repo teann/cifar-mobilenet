@@ -16,6 +16,7 @@ from network.mobileNet import MobileNet
 # from network.resnext import ResNext50,ResNext101
 # from network.squeezeNet import SqueezeNetA,SqueezeNetB
 # from network.seNet import SE_Resnet_50,SE_Resnet_101
+from network.efficientnetb0 import efficientnetb0
 
 
 os.environ['CUDA_VISIBLE_DEVICE'] = '1'
@@ -100,11 +101,12 @@ class Solver(object):
 		try:
 			while True:
 				images,labels = sess.run(train_dataset)
-
+				# print('before resizing, ', images.shape)
+				images = sess.run(tf.image.resize_images(images, [self.width,self.height]))
+				# print('after resizing, ', images.shape)
 				sess.run(self.train_op,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.8})
 				lr = sess.run(self.learning_rate)
 				if step % self.display_step==0:
-					print('imageshape here', images.shape)
 					acc = sess.run(self.accuracy,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.8})
 					total_accuracy+=acc 
 					acc_count+=1
@@ -115,11 +117,12 @@ class Solver(object):
 					summary_str = sess.run(summary_op,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.8})
 					summary_writer.add_summary(summary_str,step)
 					test_images,test_labels = sess.run(test_dataset)
+					test_images = sess.run(tf.image.resize_images(test_images, [self.width,self.height]))
 					acc = sess.run(self.accuracy,feed_dict={self.images:test_images,self.labels:test_labels,self.is_training:False,self.keep_prob:1.0})
 					print('test loss:%.4f' %(acc))
 					sys.stdout.flush()
-				if step % 5000 == 0:
-					saver.save(sess, self.model_name, global_step=step)
+				# if step % 5000 == 0:
+				# 	saver.save(sess, self.model_name, global_step=step)
 				step+=1
 		except tf.errors.OutOfRangeError:
 			print("finish training !")
