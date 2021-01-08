@@ -6,6 +6,7 @@ import os
 import tensorflow as tf
 import numpy as np 
 import sys
+import time
 
 
 # from network.vgg import vgg11,vgg13,vgg16,vgg19
@@ -19,7 +20,7 @@ from network.mobileNet import MobileNet
 from network.efficientnetb0 import efficientnetb0
 
 
-os.environ['CUDA_VISIBLE_DEVICE'] = '1'
+#os.environ['CUDA_VISIBLE_DEVICE'] = '1'
 
 class Solver(object):
 	"""docstring for Solver"""
@@ -30,7 +31,7 @@ class Solver(object):
 		self.moment = common_params['moment']
 		self.batch_size = common_params['batch_size']
 		self.height,self.width = common_params['image_size']
-
+		print('self height above ', self.height)
 		self.display_step = common_params['display_step']
 		self.predict_step = common_params['predict_step']
 
@@ -56,8 +57,11 @@ class Solver(object):
 		self.keep_prob = tf.placeholder(tf.float32,None,name='keep_prob')
 
 		self.net = eval(self.netname)(is_training=self.is_training,keep_prob=self.keep_prob)
+		if self.netname == "efficientnetb0":
 
-		self.predicts,self.softmax_out = self.net.forward(self.images)
+			self.grads, self.predicts,self.softmax_out = self.net.forward(self.images)
+		else:
+			self.predicts,self.softmax_out = self.net.forward(self.images)
 		self.total_loss = self.net.loss(self.predicts,self.labels)
 		self.learning_rate =  tf.train.exponential_decay(self.learning_rate,self.global_step,39062,0.1,staircase=True)
 		
@@ -98,33 +102,43 @@ class Solver(object):
 		step = 0
 		acc_count = 0
 		total_accuracy = 0
+		print("current gpu usage is 4")
+		start_time = time.time()
 		try:
 			while True:
+			#for i in range(100):
 				images,labels = sess.run(train_dataset)
-				# print('before resizing, ', images.shape)
 				images = sess.run(tf.image.resize_images(images, [self.width,self.height]))
 				# print('after resizing, ', images.shape)
-				sess.run(self.train_op,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.8})
+				sess.run(self.train_op,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.2})
 				lr = sess.run(self.learning_rate)
+
 				if step % self.display_step==0:
-					acc = sess.run(self.accuracy,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.8})
+					acc = sess.run(self.accuracy,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.2})
 					total_accuracy+=acc 
 					acc_count+=1
-					loss = sess.run(self.total_loss,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.8})
-					print('Iter step:%d learning rate:%.4f loss:%.4f accuracy:%.4f' %(step,lr,loss,total_accuracy/acc_count))
+					loss = sess.run(self.total_loss,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.2})
+					current_time = time.time() - start_time
+					print('Iter step:%d learning rate:%.4f loss:%.4f accuracy:%.4f, time elapse: %s'  %(step,lr,loss,total_accuracy/acc_count,current_time))
 					sys.stdout.flush()
 				if step % self.predict_step == 0:
-					summary_str = sess.run(summary_op,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.8})
+					if self.netname == 'efficientnetb0':
+						grads, summary_str = sess.run([self.grads, summary_op],feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.2})
+					else:
+						summary_str = sess.run(summary_op,feed_dict={self.images:images,self.labels:labels,self.is_training:True,self.keep_prob:0.2})
 					summary_writer.add_summary(summary_str,step)
 					test_images,test_labels = sess.run(test_dataset)
 					test_images = sess.run(tf.image.resize_images(test_images, [self.width,self.height]))
-					acc = sess.run(self.accuracy,feed_dict={self.images:test_images,self.labels:test_labels,self.is_training:False,self.keep_prob:1.0})
+					acc = sess.run(self.accuracy,feed_dict={self.images:test_images,self.labels:test_labels,self.is_training:False,self.keep_prob:0.0})
+					# grads = np.array(grads)
+					# print(grads)
+					# print('grads shape, ', grads.shape)
 					print('test loss:%.4f' %(acc))
 					sys.stdout.flush()
 				# if step % 5000 == 0:
 				# 	saver.save(sess, self.model_name, global_step=step)
 				step+=1
 		except tf.errors.OutOfRangeError:
-			print("finish training !")
+				print("finish training !")
 		sess.close()
 

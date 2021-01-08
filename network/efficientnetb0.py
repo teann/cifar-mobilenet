@@ -5,6 +5,20 @@ from __future__ import absolute_import
 import tensorflow as tf 
 import numpy as np 
 
+
+CONV_KERNEL_INITIALIZER = {
+    'class_name': 'VarianceScaling',
+    'config': {
+        'scale': 2.0,
+        'mode': 'fan_out',
+        # EfficientNet actually uses an untruncated normal distribution for
+        # initializing conv layers, but keras.initializers.VarianceScaling use
+        # a truncated distribution.
+        # We decided against a custom initializer for better serializability.
+        'distribution': 'normal'
+    }
+}
+
 class efficientnetb0(object):
 	"""docstring for MobileNet"""
 	def __init__(self,is_training=True,keep_prob=0.5,num_classes=10):
@@ -16,80 +30,52 @@ class efficientnetb0(object):
 		self.regularizer = tf.contrib.layers.l2_regularizer(scale=self.weight_decay) ## might need to switch to glorot_uniform in mb block
 		self.initializer = tf.contrib.layers.variance_scaling_initializer()
 		self.keep_prob = keep_prob
+		self.run_name = 'efficientnetb0'
 
 	def swish(self, inputs):
 		return tf.nn.swish(inputs)
 
+	def weight_variable(self, shape):
+		initial = tf.truncated_normal(shape, stddev=0.1)
+		return tf.Variable(initial)
 
-	def conv2d(self,inputs,out_channel,kernel_size=1,stride=1,advance=True):
-		inputs = tf.layers.conv2d(inputs,filters=out_channel,kernel_size=kernel_size,strides=stride,padding='same',
-			kernel_initializer=self.initializer,kernel_regularizer=self.regularizer,name='conv_'+str(self.conv_num))
-		inputs = tf.layers.batch_normalization(inputs,training=self.is_training,name='bn'+str(self.conv_num))
-		if advance == True:
-			self.conv_num+=1
-			return self.swish(inputs)
-		else:
-			return self.swish(inputs)
-		# return tf.nn.relu(inputs)
+
 
 	def mb_conv_block(self, inputs, activation, expand_ratio, in_channel, out_channel, kernel_size=1, stride=1):
-		kernel_size[2] = kernel_size[2]*expand_ratio
-		filters = in_channel * expand_ratio
+
 		##EXPANSION PHASE
-		if expand_ratio != 1:
-			inputs = self.conv2d(inputs,out_channel=filters,kernel_size=1,stride=1,advance=False)
-
-			if activation == 'swish':
-				inputs = self.swish(inputs)
-			else:
-				inputs = tf.math.sigmoid(inputs) ## might need to change tf.math to tf.keras.layers.actviation???
+		if expand_ratio == 1:
+			return inputs
 		else:
-			inputs = inputs
-
+			filters = in_channel * expand_ratio
+			inputs = tf.keras.layers.Conv2D(filters, 1, strides=1, padding='same', use_bias=False, name="expand_conv_"+str(self.conv_num))(inputs)
+			inputs = tf.keras.layers.BatchNormalization(name='bn_expand_'+str(self.conv_num))(inputs,training=self.is_training)
+			inputs = self.swish(inputs)
 
 		## DEPTHWISE CONVOLUTION
-		scope = 'conv_'+str(self.conv_num)
-		with tf.variable_scope(scope) as scope:
-			kernel = self._variable_with_weight_decay('weight',shape=kernel_size,wd = self.weight_decay)
-			depthwise = tf.nn.depthwise_conv2d(inputs,kernel,[1,stride,stride,1],padding='SAME')
-			# biases = tf.get_variable('biases',depthwise.shape[3],initializer=tf.zeros_initializer)
-			#inputs = tf.nn.bias_add(depthwise, biases)
-			inputs = tf.layers.batch_normalization(inputs,training=self.is_training,name='bn_dw_'+str(self.conv_num))
-			if activation == 'swish':
-				inputs = self.swish(inputs)
-			else:
-				inputs = tf.math.sigmoid(inputs)
-
+		depthwise = tf.keras.layers.DepthwiseConv2D(kernel_size, strides=stride, padding='same', use_bias=False, name="depthwise_conv_"+str(self.conv_num))(inputs)
+		inputs = tf.keras.layers.BatchNormalization(name='bn_dw_'+str(self.conv_num))(depthwise,training=self.is_training)
+		inputs = self.swish(inputs)
 
 		##SQUEEZE AND EXCITATION PHASE
 		se_ratio = 0.25
-
 		num_reduced_filters = max(1, int(in_channel * se_ratio))
-		# se_tensor = tf.layers.average_pooling2d(inputs,pool_size=1,strides=1)
-		se_tensor_pre_shape = inputs.shape
 		se_tensor = tf.keras.layers.GlobalAveragePooling2D(name="se_tensor_squeeze_" + str(self.conv_num))(inputs)
 		target_shape = (1, 1, se_tensor.shape[1])
 		se_tensor = tf.keras.layers.Reshape(target_shape, name="se_tensor_reshape_" + str(self.conv_num))(se_tensor)
-
-
-		## Might need to reshape
-		se_tensor = tf.layers.conv2d(se_tensor, filters=num_reduced_filters, kernel_size=1, strides=1, padding='same', kernel_initializer=self.initializer, kernel_regularizer=self.regularizer,name='conv_se_reduce_'+str(self.conv_num))
-		if activation == 'swish':
-			se_tensor = self.swish(se_tensor)
-		else:
-			se_tensor = tf.math.sigmoid(se_tensor)
-		se_tensor = tf.layers.conv2d(se_tensor, filters=filters, kernel_size=1, strides=1, padding='same', kernel_initializer=self.initializer, kernel_regularizer=self.regularizer,name='conv_se_expand_'+str(self.conv_num))
-
+		se_tensor = tf.keras.layers.Conv2D(num_reduced_filters, 1, padding='same', use_bias=True, name='conv_se_reduce_'+str(self.conv_num))(se_tensor)
+		se_tensor = self.swish(se_tensor) 
+		se_tensor = tf.keras.layers.Conv2D(filters, 1, padding='same', use_bias=True, name='conv_se_expand_'+str(self.conv_num))(se_tensor)
 		se_tensor = tf.math.sigmoid(se_tensor)
-
-		inputs = tf.math.multiply(se_tensor, inputs, name='se_excite_' + str((self.conv_num))) ## might not be able to multiply layers
+		x = tf.math.multiply(se_tensor, inputs, name='se_excite_' + str((self.conv_num)))
 
 		##Output shape
-		inputs = tf.layers.conv2d(inputs, filters=out_channel, kernel_size=1, strides=1, padding='same', kernel_initializer=self.initializer, kernel_regularizer=self.regularizer,name='project_conv_'+str(self.conv_num))
-		inputs = tf.layers.batch_normalization(inputs,training=self.is_training,name='bn_project_'+str(self.conv_num))
+		x = tf.keras.layers.Conv2D(out_channel, 1, padding='same', use_bias=False, name='conv_project_'+str(self.conv_num))(x)
+		x = tf.keras.layers.BatchNormalization(name='project_bn_'+str(self.conv_num))(x,training=self.is_training)
+
 		self.conv_num+=1
 
-		return inputs
+		return x
 
 
 
@@ -104,21 +90,27 @@ class efficientnetb0(object):
 
 
 	def forward(self,inputs):
-		out = self.conv2d(inputs,out_channel=32,kernel_size=3,stride=2, advance=True)
-		out = self.mb_conv_block(out, activation='swish', expand_ratio=1, in_channel=32, out_channel=16, kernel_size=[3,3,32,1], stride=1)
-		out = self.mb_conv_block(out, activation='swish', expand_ratio=6, in_channel=16, out_channel=24, kernel_size=[3,3,16,1], stride=2)
-		out = self.mb_conv_block(out, activation='swish', expand_ratio=6, in_channel=24, out_channel=40, kernel_size=[3,3,24,1], stride=2)
-		out = self.mb_conv_block(out, activation='swish', expand_ratio=6, in_channel=40, out_channel=80, kernel_size=[3,3,40,1], stride=2)
-		out = self.mb_conv_block(out, activation='swish', expand_ratio=6, in_channel=80, out_channel=112, kernel_size=[3,3,80,1], stride=1)
-		out = self.mb_conv_block(out, activation='swish', expand_ratio=6, in_channel=112, out_channel=192, kernel_size=[3,3,112,1], stride=2)
-		out = self.mb_conv_block(out, activation='swish', expand_ratio=6, in_channel=192, out_channel=320, kernel_size=[3,3,192,1], stride=1)
-		out = self.conv2d(out,out_channel=1280,kernel_size=1,stride=1)
-		out = tf.layers.average_pooling2d(out,pool_size=1,strides=1)
-		out = tf.layers.flatten(out)
-		out = tf.layers.dropout(out,rate=self.keep_prob)
-		predicts = tf.layers.dense(out,units=self.num_classes,kernel_initializer=self.initializer,kernel_regularizer=self.regularizer,name='fc')
+		out0 = tf.keras.layers.Conv2D(32, 3, strides=(1,1), padding = 'same', use_bias=False, name="stem_conv")(inputs)
+		print('strides at 1')
+		out0 = tf.keras.layers.BatchNormalization(name='stem_bn')(out0,training=self.is_training)
+		out0 = self.swish(out0)
+		out1 = self.mb_conv_block(out0, activation='swish', expand_ratio=1, in_channel=32, out_channel=16, kernel_size=3, stride=1)
+		out2 = self.mb_conv_block(out1, activation='swish', expand_ratio=6, in_channel=16, out_channel=24, kernel_size=3, stride=2)
+		out3 = self.mb_conv_block(out2, activation='swish', expand_ratio=6, in_channel=24, out_channel=40, kernel_size=5, stride=2)
+		out4 = self.mb_conv_block(out3, activation='swish', expand_ratio=6, in_channel=40, out_channel=80, kernel_size=3, stride=2)
+		out5 = self.mb_conv_block(out4, activation='swish', expand_ratio=6, in_channel=80, out_channel=112, kernel_size=5, stride=1)
+		out6 = self.mb_conv_block(out5, activation='swish', expand_ratio=6, in_channel=112, out_channel=192, kernel_size=5, stride=2)
+		out7 = self.mb_conv_block(out6, activation='swish', expand_ratio=6, in_channel=192, out_channel=320, kernel_size=3, stride=1)
+		# out8 = self.conv2d(out7,out_channel=1280,kernel_size=1,stride=1)
+		out8 = tf.keras.layers.GlobalAveragePooling2D(name="top_adapt")(out7)
+		print('NO AVERAGE POOL')
+		print('LAST FC LAYER DEACTIVATED')
+		out9 = tf.layers.flatten(out8)
+		out10 = tf.layers.dropout(out9,rate=self.keep_prob)
+		predicts = tf.layers.dense(out10,units=self.num_classes,kernel_initializer=self.initializer,kernel_regularizer=self.regularizer,name='fc')
 		softmax_out = tf.nn.softmax(predicts,name='output')
-		return predicts,softmax_out
+		gradient_to_binarized = tf.gradients(ys=softmax_out, xs=out1)
+		return gradient_to_binarized, predicts,softmax_out
 
 	def make_layer(self,inputs,repeat=5):
 		for i in range(repeat):
@@ -136,11 +128,11 @@ class efficientnetb0(object):
 
 
 if __name__=='__main__':
-	with tf.device('/GPU:0'):
+	with tf.device('/CPU:0'):
 		net = efficientnetb0()
 		data = np.random.randn(64,32,32,3)
 		inputs = tf.placeholder(tf.float32,[64,32,32,3])
-		predicts,softmax_out = net.forward(inputs)
+		grads, predicts,softmax_out = net.forward(inputs)
 		config = tf.ConfigProto(allow_soft_placement=True)
 		config.gpu_options.allow_growth=True
 		init = tf.global_variables_initializer()

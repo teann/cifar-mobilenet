@@ -12,7 +12,7 @@ import tensorflow as tf
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr',type=float,default=0.1,help='cifar_10 learning_rate')
-parser.add_argument('--batch_size',type=int,default=64,help='batch size')
+parser.add_argument('--batch_size',type=int,default=128,help='batch size')
 parser.add_argument('--moment',type=float,default=0.9,help='sovler moment')
 parser.add_argument('--display_step',type=int,default=100,help='show train display')
 parser.add_argument('--num_epochs',type=int,default=200,help='train epochs')
@@ -25,6 +25,7 @@ def main(_):
 	common_params = cfg.merge_params(FLAGS)
 	print(common_params)
 	net_name = FLAGS.net
+	print('CURRENT NET, ', net_name)
 	dataset = cifar_dataset(common_params,cfg.dataset_params)
 	solver = Solver(net_name,dataset,cfg.common_params,cfg.dataset_params)
 	solver.solve()
